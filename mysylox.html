@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="si">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>MyZylox — Cross Browser Video Platform</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+        body { background: #0f0f0f; color: #f1f1f1; min-height: 100vh; }
+        
+        .login-container { display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; background: #0f0f0f; }
+        .login-card { background: #1c1c1c; border-radius: 32px; padding: 40px 32px; text-align: center; max-width: 360px; width: 100%; }
+        .login-card h1 { font-size: 2rem; margin-bottom: 12px; background: linear-gradient(135deg, #ff4d4d, #ffb347); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        .login-card p { color: #aaa; margin-bottom: 28px; }
+        .google-btn { background: #ff4d4d; border: none; padding: 14px 28px; border-radius: 50px; color: white; font-weight: bold; font-size: 16px; width: 100%; cursor: pointer; }
+        .google-btn:active { transform: scale(0.97); }
+        
+        .header { position: sticky; top: 0; background: #0f0f0fcc; backdrop-filter: blur(18px); border-bottom: 1px solid #272727; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; }
+        .logo { font-size: 22px; font-weight: 800; background: linear-gradient(135deg, #ff4d4d, #ffb347); -webkit-background-clip: text; background-clip: text; color: transparent; cursor: pointer; }
+        .btn { background: #ff4d4d; border: none; padding: 8px 18px; border-radius: 40px; color: white; font-weight: 500; cursor: pointer; }
+        .avatar { width: 38px; height: 38px; background: #ff6b4a; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; cursor: pointer; background-size: cover; background-position: center; }
+        .container { padding: 16px; max-width: 800px; margin: 0 auto; }
+        .section-title { font-size: 18px; font-weight: 600; margin: 20px 0 12px 0; border-left: 4px solid #ff4d4d; padding-left: 12px; }
+        
+        .video-card { background: #1a1a1a; border-radius: 14px; padding: 14px; margin-bottom: 12px; cursor: pointer; }
+        .video-card:active { transform: scale(0.98); }
+        .video-title { font-weight: bold; font-size: 16px; }
+        .video-meta { font-size: 12px; color: #aaa; margin-top: 6px; display: flex; gap: 12px; }
+        
+        .upload-area { background: #1a1a1a; border-radius: 20px; padding: 20px; margin: 20px 0; }
+        input { background: #2a2a2a; border: 1px solid #3a3a3a; padding: 12px 16px; border-radius: 40px; color: white; width: 100%; margin: 8px 0; outline: none; }
+        .toast { position: fixed; bottom: 20px; left: 20px; right: 20px; background: #ff4d4d; padding: 12px; border-radius: 40px; text-align: center; z-index: 2000; animation: fadeIn 0.2s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div id="loginScreen" class="login-container">
+    <div class="login-card">
+        <h1>🎬 MyZylox</h1>
+        <p>🌍 ඕනෑම Browser එකකින් ප්‍රවේශ වන්න</p>
+        <button class="google-btn" id="googleLoginBtn">🔐 Sign in with Google</button>
+        <p style="font-size: 11px; color: #666; margin-top: 20px;">✨ Cross-Platform Cloud Version ✨</p>
+    </div>
+</div>
+
+<div id="mainApp" class="hidden">
+    <div class="header">
+        <div class="logo" id="homeBtn">🎬 MyZylox</div>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <button class="btn" id="uploadNavBtn">📤 Upload</button>
+            <div class="avatar" id="avatarBtn">👤</div>
+        </div>
+    </div>
+    
+    <div class="container" id="homeView">
+        <div class="section-title">🔥 Latest Videos</div>
+        <div id="videoList"></div>
+    </div>
+    
+    <div id="uploadView" class="container hidden">
+        <div class="section-title">📤 Upload Video</div>
+        <div class="upload-area">
+            <input type="text" id="videoTitle" placeholder="Video title">
+            <input type="file" id="videoFile" accept="video/mp4,video/webm">
+            <button class="btn" id="publishBtn" style="width: 100%; margin-top: 10px;">Publish to Cloud</button>
+            <button class="btn" id="cancelUploadBtn" style="background: #333; width: 100%; margin-top: 8px;">Cancel</button>
+        </div>
+        <div class="section-title">📹 My Videos</div>
+        <div id="myVideosList"></div>
+    </div>
+</div>
+
+<script>
+const SUPABASE_URL = "https://huzcuspzhqttbujcfpcw.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_2Xxi-VeACFEGYziBBNSY4g_NK-Ki6rm";
+
+const supabase = supabaseJs.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let currentUser = null;
+let videos = [];
+let users = [];
+
+function showToast(msg, isError = false) {
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.style.background = isError ? '#d32f2f' : '#ff4d4d';
+    toast.innerText = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2500);
+}
+
+function escapeHtml(str) {
+    return String(str || '').replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+}
+
+// Authentication
+async function handleGoogleSignIn() {
+    try {
+        const { error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: { redirectTo: window.location.href }
+        });
+        if (error) throw error;
+    } catch (error) {
+        showToast("Login error: " + error.message, true);
+    }
+}
+
+async function checkSession() {
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (session) {
+        await supabase.from('users').upsert({
+            id: session.user.id,
+            email: session.user.email,
+            display_name: session.user.user_metadata.full_name || session.user.email.split('@')[0],
+            avatar_url: session.user.user_metadata.avatar_url
+        });
+        
+        currentUser = {
+            id: session.user.id,
+            email: session.user.email,
+            displayName: session.user.user_metadata.full_name || session.user.email.split('@')[0],
+            avatar: session.user.user_metadata.avatar_url
+        };
+        
+        document.getElementById('loginScreen').classList.add('hidden');
+        document.getElementById('mainApp').classList.remove('hidden');
+        
+        if (currentUser.avatar) {
+            document.getElementById('avatarBtn').style.backgroundImage = `url(${currentUser.avatar})`;
+            document.getElementById('avatarBtn').style.backgroundSize = 'cover';
+            document.getElementById('avatarBtn').innerHTML = '';
+        } else {
+            document.getElementById('avatarBtn').innerHTML = currentUser.displayName.charAt(0).toUpperCase();
+        }
+        
+        await loadData();
+        renderHome();
+        showToast(`Welcome ${currentUser.displayName}! 🌍`);
+        return true;
+    }
+    return false;
+}
+
+supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_IN') window.location.reload();
+});
+
+async function logout() {
+    await supabase.auth.signOut();
+    currentUser = null;
+    document.getElementById('loginScreen').classList.remove('hidden');
+    document.getElementById('mainApp').classList.add('hidden');
+}
+
+// Data
+async function loadData() {
+    const { data: usersData } = await supabase.from('users').select('*');
+    users = usersData || [];
+    
+    const { data: videosData } = await supabase.from('videos').select('*').order('created_at', { ascending: false });
+    videos = videosData || [];
+}
+
+// Video Upload
+async function uploadVideo(title, file) {
+    if (!title || !file) throw new Error("Title and file required");
+    if (file.size > 200 * 1024 * 1024) throw new Error("Max 200 MB");
+    
+    showToast("📤 Uploading...");
+    
+    const videoId = `vid_${Date.now()}`;
+    const fileName = `${videoId}.mp4`;
+    
+    const { error: uploadError } = await supabase.storage.from('videos').upload(fileName, file);
+    if (uploadError) throw uploadError;
+    
+    const { data: { publicUrl } } = supabase.storage.from('videos').getPublicUrl(fileName);
+    
+    let duration = "0:00";
+    const tempVideo = document.createElement('video');
+    tempVideo.preload = 'metadata';
+    tempVideo.src = URL.createObjectURL(file);
+    await new Promise((resolve) => {
+        tempVideo.onloadedmetadata = () => {
+            const mins = Math.floor(tempVideo.duration / 60);
+            const secs = Math.floor(tempVideo.duration % 60);
+            duration = `${mins}:${secs.toString().padStart(2, '0')}`;
+            resolve();
+        };
+        tempVideo.onerror = () => resolve();
+    });
+    
+    const { error: dbError } = await supabase.from('videos').insert({
+        id: videoId,
+        user_id: currentUser.id,
+        title: escapeHtml(title),
+        video_url: publicUrl,
+        duration: duration,
+        views: 0
+    });
+    
+    if (dbError) throw dbError;
+    
+    showToast(`✅ "${title}" uploaded!`);
+    await loadData();
+    renderHome();
+}
+
+// Render
+function renderVideoGrid(videoArray, containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = '';
+    
+    if (videoArray.length === 0) {
+        container.innerHTML = '<div style="text-align:center; padding:40px; color:#666;">✨ No videos yet</div>';
+        return;
+    }
+    
+    for (let vid of videoArray) {
+        const owner = users.find(u => u.id === vid.user_id);
+        const card = document.createElement('div');
+        card.className = 'video-card';
+        card.innerHTML = `
+            <div class="video-title">${escapeHtml(vid.title)}</div>
+            <div style="font-size: 12px; color: #aaa;">👤 ${escapeHtml(owner?.display_name || 'Unknown')}</div>
+            <div class="video-meta"><span>👁️ ${vid.views || 0}</span><span>⏱️ ${vid.duration || '0:00'}</span></div>
+        `;
+        card.onclick = () => openWatchPage(vid);
+        container.appendChild(card);
+    }
+}
+
+async function openWatchPage(video) {
+    await supabase.from('videos').update({ views: (video.views || 0) + 1 }).eq('id', video.id);
+    video.views = (video.views || 0) + 1;
+    
+    const owner = users.find(u => u.id === video.user_id);
+    const html = `
+        <div style="position:fixed; top:0; left:0; right:0; bottom:0; background:#000; z-index:2000; padding:20px; overflow-y:auto;">
+            <video src="${video.video_url}" style="width:100%; max-height:50vh;" controls autoplay></video>
+            <h2 style="margin-top:16px;">${escapeHtml(video.title)}</h2>
+            <div style="color:#aaa;">👤 ${escapeHtml(owner?.display_name || 'Unknown')}</div>
+            <div style="color:#666; margin:8px 0;">👁️ ${video.views} views</div>
+            <button onclick="closeWatch()" style="background:#ff4d4d; border:none; padding:12px; border-radius:40px; color:white; width:100%; margin-top:20px;">Close</button>
+        </div>
+    `;
+    const div = document.createElement('div'); div.id = 'watchContainer'; div.innerHTML = html;
+    document.body.appendChild(div);
+}
+
+window.closeWatch = function() {
+    document.getElementById('watchContainer')?.remove();
+};
+
+function renderHome() {
+    document.getElementById('homeView').classList.remove('hidden');
+    document.getElementById('uploadView').classList.add('hidden');
+    renderVideoGrid(videos, 'videoList');
+}
+
+function renderUploadView() {
+    document.getElementById('homeView').classList.add('hidden');
+    document.getElementById('uploadView').classList.remove('hidden');
+    const myVideos = videos.filter(v => v.user_id === currentUser?.id);
+    renderVideoGrid(myVideos, 'myVideosList');
+}
+
+// Event Listeners
+document.getElementById('googleLoginBtn').onclick = () => handleGoogleSignIn();
+document.getElementById('homeBtn').onclick = () => renderHome();
+document.getElementById('uploadNavBtn').onclick = () => renderUploadView();
+document.getElementById('cancelUploadBtn').onclick = () => renderHome();
+document.getElementById('avatarBtn').onclick = () => { if(confirm("Logout?")) logout(); };
+
+document.getElementById('publishBtn').onclick = async () => {
+    const title = document.getElementById('videoTitle').value.trim();
+    const file = document.getElementById('videoFile').files[0];
+    if (title && file) {
+        try {
+            await uploadVideo(title, file);
+            document.getElementById('videoTitle').value = '';
+            document.getElementById('videoFile').value = '';
+            renderUploadView();
+        } catch(e) { showToast(e.message, true); }
+    } else { showToast("Title and file required", true); }
+};
+
+checkSession();
+</script>
+</body>
+</html>
